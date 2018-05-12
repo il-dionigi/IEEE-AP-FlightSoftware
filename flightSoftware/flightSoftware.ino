@@ -1,7 +1,3 @@
-int sensorValue_LEFT;  //A0
-int sensorValue_RIGHT;  //A1
-int sensorValue_MID;    //A2
- 
 int e_LEFT;
 int e_RIGHT;
 int throttleErrorP;
@@ -20,18 +16,6 @@ int yawErrorP;
 int yawErrorI;
 int yawErrorD;
 int yawErrorTotal;
-
-int errorP;   //position error
-int prev_errorP = 0;  //previous position error
-int errorD;   //change in error
-int onTrack;  //middle sensor reading, if we're on track
-
-// H denotes an H-bridge pin
-int out_LEFTp; // D5 -> H2  controls direction of motor spin
-int out_LEFTn; // D6 -> H7
- 
-int out_RIGHTp;  // D10 -> H15
-int out_RIGHTn;  // D11 -> H10
 
 int out_motorSpeed[4] = {0, 0, 0, 0};
  
@@ -79,6 +63,42 @@ prev_errorP = errorP;
 
 // motorSpeed orientations are topLeft, topRight, botLeft, botRight
 // positive error means to throttle up, pitch forward, roll right, and yaw right
+
+// create "TRPY vector" arrays that holds throttle, roll, pitch, and yaw
+// utilize cartesian vectors / quaternions to also have positional error relative to copter's normal
+
+//  ----  Want to deal with error mostly in TRPY form as this will be more easily translated to motor control and is
+//        most likely the form user input will take.
+
+// TRPY vector for current throttle, roll, pitch, yaw - "TRPY current vector"
+//          calculated from quaternion pointing towards true up
+//          the copters internal sense of its roll, pitch and yaw will always be relative to true up, not relative to its current position
+//          throttle is a variable magnitude that scales the final motor output, after RPY error and correction has been calculated
+
+
+// TRPY vector for error from desired orientation -- "TRPY error vector"
+//          will usually be the roll, pitch and yaw of the "true up" quaternion relative to the quatd copter's normal
+//                   relative vector as calculated with quaternions in our previous code, need to translate to TRPY
+//                   throttle error will be calculated relative to acceleration in the opposite direction of "true up" when movement down is not from user input
+//          when given user input the error TRPY vector will instead be the difference from current TRPY to user's desired input for TRPY
+//                   simple, throttle will still be maintained to oppose acceleration down so as to stabilize the copter in the air
+//          magnitude (severity) of TRPY error will be the spherical angle phi component of the positonal error vector
+//                   the angle between desired normal and current normal (makes sense)
+//          IMPLEMENTATION: 
+//                   compute "TRPY desired vector" that is relative RPY to "true up" when no user input is given, otherwise in is equal to "TRPY user input"
+//                              the T throttle component is never purely user input, it always has part that resists gravity unless user input purposefully decreases throttle
+//                   "TRPY error vector" will be difference from "TRPY current vector" to "TRPY desired vector"
+
+
+// PROPORTIONAL error will be "TRPY error vector" scaled by a constant "CP"
+// DIFFERENTIAL error will be ("TRPY error vector" - "TRPY error vector previous") scaled by a constant "CD"
+// INTEGRAL error will be N point sum of past TRPY error vectors scaled by a constant "CI"
+// SUM above to form "TRPY output vector"
+
+// GEN METHOD:   Calculate "TRPY error vector" and final output to motors is taken from "TRPY output vector", with each motor taking certain elements
+//                      certain motors will be responding to pitch error differently
+//               Scaled all final output to motors by throttle T component of "TRPY output vector"
+
 
 // top left motor
 out_motorSpeed[0] = (throttleErrorTotal * throttleAdj[0]) - (pitchErrorTotal * pitchAdj[0]) + (rollErrorTotal * rollAdj[0]) + (yawErrorTotal + yawAdj[0]);
